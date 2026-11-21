@@ -2,7 +2,8 @@
 //!
 //! Verifies that:
 //! 1. Reports are stored and indexed by market ID
-//! 2. `get_reports_by_market` enumerates all reports for a market
+//! 2. `get_reports_by_market` enumerates reports in ascending report ID
+//!    (submission) order
 //! 3. `get_report` retrieves a specific report
 //! 4. The index is persisted and survives event TTL expiry
 
@@ -115,6 +116,48 @@ fn test_multiple_reports_same_market() {
     assert_eq!(market_reports.get(0).unwrap(), 1);
     assert_eq!(market_reports.get(1).unwrap(), 2);
     assert_eq!(market_reports.get(2).unwrap(), 3);
+}
+
+/// Market report indexes preserve submission order and return it consistently.
+#[test]
+fn test_reports_by_market_are_stable_in_submission_order() {
+    let env = Env::default();
+    let (client, _admin, reporter) = register_and_init(&env);
+    let market_id = 42u32;
+
+    let first_id = client
+        .submit_report(
+            &reporter,
+            &market_id,
+            &String::from_str(&env, "First report"),
+            &String::from_str(&env, "hash1"),
+        )
+        .unwrap();
+    client
+        .submit_report(
+            &reporter,
+            &7u32,
+            &String::from_str(&env, "Other market report"),
+            &String::from_str(&env, "hash2"),
+        )
+        .unwrap();
+    let second_id = client
+        .submit_report(
+            &reporter,
+            &market_id,
+            &String::from_str(&env, "Second report"),
+            &String::from_str(&env, "hash3"),
+        )
+        .unwrap();
+
+    let expected = [first_id, second_id];
+    for _ in 0..2 {
+        let market_reports: Vec<u32> = client.get_reports_by_market(&market_id);
+        assert_eq!(market_reports.len(), expected.len() as u32);
+        for (index, report_id) in expected.iter().enumerate() {
+            assert_eq!(market_reports.get(index as u32), Some(*report_id));
+        }
+    }
 }
 
 /// Reports for different markets should be indexed separately.

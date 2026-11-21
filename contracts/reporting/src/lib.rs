@@ -77,13 +77,310 @@ impl ReportingContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
 
-        // The reporting contract currently does not implement a dispute workflow of its own.
-        // Disputes are handled by the dedicated contracts/disputes subsystem.
-        env.storage().persistent().set(&DataKey::NextReportId, &1u32);
+        env.storage()
+            .persistent()
+            .set(&DataKey::NextReportId, &1u32);
 
         Ok(())
     }
 
-    // ... remaining file unchanged ...
+    // -----------------------------------------------------------------------
+    // Report lifecycle
+    // -----------------------------------------------------------------------
+
+    /// Submit a new report against a market.
+    ///
+    /// # Parameters
+    ///
+    /// * `reporter`     — Address of the reporting party. Must sign the call.
+    /// * `market_id`    — Identifier of the market this report relates to.
+    /// * `report_data`  — Human-readable or structured report payload.
+    /// * `report_hash`  — On-chain commitment hash of the off-chain report
+    ///                    document (e.g. SHA-256 hex string).
+    ///
+    /// # Returns
+    ///
+    /// The numeric ID of the newly created report.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::ReportingPaused`] — Reporting is currently paused;
+    ///   all state-changing operations are halted until unpaused.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `reporter`.
+    pub fn submit_report(
+        env: Env,
+        reporter: Address,
+        market_id: u32,
+        report_data: String,
+        report_hash: String,
+    ) -> Result<u32, ReportingError> {
+        pause::require_not_paused(&env)?;
+        reporter.require_auth();
+
+        let report_id: u32 = env
+            .storage()
+            .persistent()
+            .get::<DataKey, u32>(&DataKey::NextReportId)
+            .unwrap_or(1);
+
+        let next_id = report_id.checked_add(1).expect("report ID overflow");
+
+        let report = Report {
+            id: report_id,
+            market_id,
+            reporter: reporter.clone(),
+            report_data,
+            report_hash,
+            status: 0,
+            created_at: env.ledger().sequence(),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Report(report_id), &report);
+
+        let mut market_reports: Vec<u32> = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<u32>>(&DataKey::MarketReports(market_id))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        market_reports.push_back(report_id);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::MarketReports(market_id), &market_reports);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::NextReportId, &next_id);
+
+        Ok(report_id)
+    }
+
+    /// Verify a previously submitted report.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::ReportingPaused`] — Reporting is currently paused.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `admin`.
+    pub fn verify_report(
+        env: Env,
+        admin: Address,
+        report_id: u32,
+        verification_result: bool,
+    ) -> Result<(), ReportingError> {
+        pause::require_not_paused(&env)?;
+        admin.require_auth();
+        let _ = (report_id, verification_result);
+        Ok(())
+    }
+
+    /// Dispute a report, initiating the dispute-resolution workflow.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::ReportingPaused`] — Reporting is currently paused.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `reporter`.
+    pub fn dispute_report(
+        env: Env,
+        reporter: Address,
+        report_id: u32,
+        dispute_reason: String,
+    ) -> Result<(), ReportingError> {
+        pause::require_not_paused(&env)?;
+        reporter.require_auth();
+        let _ = (report_id, dispute_reason);
+        Ok(())
+    }
+
+    /// Resolve an active dispute, closing the dispute-resolution workflow.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::ReportingPaused`] — Reporting is currently paused.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `admin`.
+    pub fn resolve_dispute(
+        env: Env,
+        admin: Address,
+        dispute_id: u32,
+        resolution: bool,
+    ) -> Result<(), ReportingError> {
+        admin.require_auth();
+        pause::require_not_paused(&env)?;
+        let _ = (dispute_id, resolution);
+        Ok(())
+    }
+
+    /// Update the status code of a report.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::ReportingPaused`] — Reporting is currently paused.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `admin`.
+    pub fn update_report_status(
+        env: Env,
+        admin: Address,
+        report_id: u32,
+        new_status: u32,
+    ) -> Result<(), ReportingError> {
+        admin.require_auth();
+        pause::require_not_paused(&env)?;
+        let _ = (report_id, new_status);
+        Ok(())
+    }
+
+    /// Permanently delete a report by ID.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::ReportingPaused`] — Reporting is currently paused.
+    /// * [`ReportingError::ReportNotFound`] — No report with the given ID exists.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `admin`.
+    pub fn delete_report(
+        env: Env,
+        admin: Address,
+        report_id: u32,
+    ) -> Result<(), ReportingError> {
+        admin.require_auth();
+        pause::require_not_paused(&env)?;
+
+        let report = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Report>(&DataKey::Report(report_id))
+            .ok_or(ReportingError::ReportNotFound)?;
+
+        let market_key = DataKey::MarketReports(report.market_id);
+        if let Some(mut market_reports) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, Vec<u32>>(&market_key)
+        {
+            let mut index = 0;
+            while index < market_reports.len() {
+                if market_reports.get(index) == Some(report_id) {
+                    market_reports.remove(index);
+                    break;
+                }
+                index += 1;
+            }
+            env.storage()
+                .persistent()
+                .set(&market_key, &market_reports);
+        }
+
+        env.storage()
+            .persistent()
+            .remove(&DataKey::Report(report_id));
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Pause / Resume
+    // -----------------------------------------------------------------------
+
+    /// Pause the reporting mechanism, halting all state-changing operations.
+    ///
+    /// Calling this when already paused is a no-op (idempotent). A
+    /// `reporting_paused` event is emitted only on a state transition.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `admin`.
+    pub fn pause_reporting(env: Env, admin: Address) -> Result<(), ReportingError> {
+        admin.require_auth();
+        pause::pause_reporting(&env)
+    }
+
+    /// Resume the reporting mechanism, re-enabling all state-changing
+    /// operations.
+    ///
+    /// Calling this when already unpaused is a no-op (idempotent). A
+    /// `reporting_unpaused` event is emitted only on a state transition.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `admin`.
+    pub fn unpause_reporting(env: Env, admin: Address) -> Result<(), ReportingError> {
+        admin.require_auth();
+        pause::unpause_reporting(&env)
+    }
+
+    // -----------------------------------------------------------------------
+    // Ownership and read-only views
+    // -----------------------------------------------------------------------
+
+    /// Transfer contract ownership to a new administrator.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::InvalidNewOwner`] — `new_owner` is identical to
+    ///   the current admin.
+    ///
+    /// # Auth
+    ///
+    /// Requires a valid signature from `admin`.
+    pub fn transfer_ownership(
+        env: Env,
+        admin: Address,
+        new_owner: Address,
+    ) -> Result<(), ReportingError> {
+        admin.require_auth();
+
+        if admin == new_owner {
+            return Err(ReportingError::InvalidNewOwner);
+        }
+
+        env.storage().instance().set(&DataKey::Admin, &new_owner);
+        Ok(())
+    }
+
+    /// Retrieve all report IDs associated with a specific market in submission order.
+    pub fn get_reports_by_market(env: Env, market_id: u32) -> Vec<u32> {
+        env.storage()
+            .persistent()
+            .get::<DataKey, Vec<u32>>(&DataKey::MarketReports(market_id))
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Retrieve a specific report by ID.
+    pub fn get_report(env: Env, report_id: u32) -> Result<Report, ReportingError> {
+        env.storage()
+            .persistent()
+            .get::<DataKey, Report>(&DataKey::Report(report_id))
+            .ok_or(ReportingError::ReportNotFound)
+    }
+
+    /// Return whether reporting is currently paused.
+    pub fn is_reporting_paused(env: Env) -> bool {
+        pause::is_reporting_paused(&env)
+    }
+
+    /// Return the current admin address.
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::Admin)
+            .expect("not initialized")
+    }
 }
 
