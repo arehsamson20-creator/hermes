@@ -6,6 +6,9 @@ use soroban_sdk::{
 
 mod migrate;
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
@@ -32,6 +35,8 @@ pub enum ContractError {
     InvalidMigrationData = 6,
     /// Storage migration failed
     MigrationFailed = 7,
+    /// The configured administrator is a reserved zero-address sentinel.
+    InvalidAdminAddress = 8,
 }
 
 /// Migration metadata stored per version upgrade
@@ -75,8 +80,6 @@ impl MigrateContract {
     /// Initialize the contract with admin and version
     /// Requires auth from admin
     pub fn initialize(env: Env, admin: Address, version: u32) -> Result<(), ContractError> {
-        admin.require_auth();
-        
         if version == 0 || version > CURRENT_VERSION {
             return Err(ContractError::InvalidTargetVersion);
         }
@@ -84,6 +87,10 @@ impl MigrateContract {
         if env.storage().instance().has(&DataKey::Version) {
             return Err(ContractError::AlreadyInitialized);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ContractError::InvalidAdminAddress);
+        }
+        admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Version, &version);

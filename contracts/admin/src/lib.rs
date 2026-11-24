@@ -6,6 +6,9 @@
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
@@ -26,6 +29,7 @@ pub enum ContractError {
     InvalidNewOwner = 6,
     OwnershipTransferNotProposed = 7,
     OwnershipTransferTimelocked = 8,
+    InvalidAdminAddress = 9,
 }
 
 #[contracttype]
@@ -38,6 +42,7 @@ pub struct PendingOwnership {
 
 const MIN_COOLDOWN_SECONDS: u64 = 60;
 pub const OWNERSHIP_TRANSFER_TIMELOCK_SECONDS: u64 = 86_400;
+
 fn get_admin_cooldown_internal(env: &Env) -> u64 {
     env.storage()
         .persistent()
@@ -84,11 +89,13 @@ pub struct AdminContract;
 impl AdminContract {
     /// Initialize the admin contract with a primary administrator.
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
-        admin.require_auth();
-
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(ContractError::AlreadyInitialized);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ContractError::InvalidAdminAddress);
+        }
+        admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         Ok(())

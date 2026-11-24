@@ -14,6 +14,9 @@ impl PredictifyHybrid {
         if env.storage().persistent().has(&Symbol::new(&env, SYM_PLATFORM_FEE)) {
             return Err(Error::InvalidState);
         }
+        if !crate::admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(Error::InvalidInput);
+        }
 
         let fee_percentage = platform_fee_percentage.unwrap_or(DEFAULT_PLATFORM_FEE_PERCENTAGE);
 

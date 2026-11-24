@@ -26,6 +26,9 @@ use soroban_sdk::{
     contract, contractimpl, symbol_short, Address, Env, Symbol, Vec,
 };
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 /// Maximum distance between a supplied metric timestamp and ledger time.
 /// Adjust this deployment constant when the expected ingestion delay changes.
 const MAX_TIMESTAMP_DRIFT_SECONDS: u64 = 86_400;
@@ -43,6 +46,9 @@ impl Analytics {
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
         if env.storage().instance().has(&DataKey::Initialized) {
             return Err(ContractError::AlreadyInitialized);
+        }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ContractError::InvalidConfig);
         }
         admin.require_auth();
 

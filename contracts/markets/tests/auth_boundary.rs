@@ -55,6 +55,31 @@ fn setup_test_environment(env: &Env) -> TestSetup<'_> {
     }
 }
 
+#[test]
+fn initialize_rejects_zero_address_sentinels() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(MarketsContract, ());
+    let client = MarketsContractClient::new(&env, &contract_id);
+    let invalid_admins = [
+        Address::from_string(&soroban_sdk::String::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        )),
+        Address::from_string(&soroban_sdk::String::from_str(
+            &env,
+            "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+        )),
+    ];
+
+    for admin in &invalid_admins {
+        assert_eq!(
+            client.try_initialize(admin),
+            Err(Ok(ContractError::AdminAddressInvalid))
+        );
+    }
+}
+
 struct TestSetup<'a> {
     admin: Address,
     market_creator: Address,

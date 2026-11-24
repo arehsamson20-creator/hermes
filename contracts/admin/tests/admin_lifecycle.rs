@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use admin::{AdminContract, AdminContractClient, ContractError};
-use soroban_sdk::{testutils::Address as _, Address, Env, Symbol};
+use soroban_sdk::{testutils::Address as _, Address, Env, String, Symbol};
 
 fn setup(env: &Env) -> (AdminContractClient<'_>, Address) {
     env.mock_all_auths();
@@ -24,6 +24,31 @@ fn initialization_sets_admin_and_rejects_reinitialization() {
         client.try_initialize(&second_admin),
         Err(Ok(ContractError::AlreadyInitialized))
     );
+}
+
+#[test]
+fn initialization_rejects_zero_address_sentinels() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(AdminContract, ());
+    let client = AdminContractClient::new(&env, &contract_id);
+    let invalid_admins = [
+        Address::from_string(&String::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        )),
+        Address::from_string(&String::from_str(
+            &env,
+            "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+        )),
+    ];
+
+    for admin in &invalid_admins {
+        assert_eq!(
+            client.try_initialize(admin),
+            Err(Ok(ContractError::InvalidAdminAddress))
+        );
+    }
 }
 
 #[test]

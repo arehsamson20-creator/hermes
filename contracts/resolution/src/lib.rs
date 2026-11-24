@@ -9,6 +9,9 @@ pub mod errors;
 
 use errors::ContractError;
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 const COOLDOWN_TTL_LEDGERS: u32 = 535_680;
 const RESOLUTION_TTL_LEDGERS: u32 = 6_307_200;
 
@@ -132,10 +135,13 @@ impl ResolutionContract {
 
     /// Initialize the administrator that configures market and oracle contracts.
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
-        admin.require_auth();
         if env.storage().persistent().has(&DataKey::Admin) {
             return Err(ContractError::InvalidState);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ContractError::InvalidInput);
+        }
+        admin.require_auth();
         Self::validate_ttl_config(&env)?;
         env.storage().persistent().set(&DataKey::Admin, &admin);
         Self::extend_ttl(&env, &DataKey::Admin, COOLDOWN_TTL_LEDGERS);

@@ -29,6 +29,9 @@ use soroban_sdk::{
     String, Symbol, Vec,
 };
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 /// Persistent storage key for the oracle address list.
 #[contracttype]
 pub enum DataKey {
@@ -91,6 +94,8 @@ pub enum Error {
     OracleCallbackTimeout = 214,
     /// The contract has already been initialized.
     AlreadyInitialized = 215,
+    /// The configured administrator is a reserved zero-address sentinel.
+    InvalidAdminAddress = 216,
     // ===== CAPABILITIES ERRORS (220-229) =====
     /// The requested capability is not supported by this contract version.
     CapabilityNotSupported = 220,
@@ -192,6 +197,9 @@ impl OraclesContract {
     pub fn initialize(env: Env, admin: Address, max_staleness_seconds: u64) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
+        }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(Error::InvalidAdminAddress);
         }
 
         admin.require_auth();

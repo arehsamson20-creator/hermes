@@ -5,6 +5,9 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 extern crate alloc;
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 use soroban_sdk::{
     contract, contractimpl, panic_with_error, symbol_short, Address, BytesN, Map, String, Symbol, Vec,
 };

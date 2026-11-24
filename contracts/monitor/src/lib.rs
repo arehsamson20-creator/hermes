@@ -53,6 +53,9 @@ pub use storage::DataKey;
 
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 /// The Monitor contract.
 ///
 /// Deploy this contract alongside the core Predictify contracts to enforce
@@ -79,12 +82,15 @@ impl MonitorContract {
     /// # Errors
     ///
     /// - [`MonitorError::AlreadyInitialized`] — called a second time.
+    /// - [`MonitorError::InvalidInput`] — `admin` is a reserved zero address.
     pub fn initialize(env: Env, admin: Address) -> Result<(), MonitorError> {
-        admin.require_auth();
-
         if env.storage().instance().has(&DataKey::Initialized) {
             return Err(MonitorError::AlreadyInitialized);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(MonitorError::InvalidInput);
+        }
+        admin.require_auth();
 
         env.storage().instance().set(&DataKey::Initialized, &true);
         env.storage().instance().set(&DataKey::Admin, &admin);

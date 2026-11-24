@@ -45,6 +45,9 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Env, Symbol, Vec,
 };
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -102,13 +105,16 @@ impl AllowlistContract {
     ///
     /// # Errors
     /// - [`AllowlistError::AlreadyInitialized`] if already initialized.
+    /// - [`AllowlistError::InvalidInput`] if `admin` is a reserved zero address.
     pub fn initialize(env: Env, admin: Address) -> Result<(), AllowlistError> {
-        Self::bump_instance_ttl(&env);
-        admin.require_auth();
-
         if Self::is_initialized(&env) {
             return Err(AllowlistError::AlreadyInitialized);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(AllowlistError::InvalidInput);
+        }
+        Self::bump_instance_ttl(&env);
+        admin.require_auth();
 
         // Persist admin, initialization status, and registry in persistent storage with TTL management
         env.storage().persistent().set(&DataKey::Initialized, &true);

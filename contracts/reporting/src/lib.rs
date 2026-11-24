@@ -41,6 +41,9 @@ pub use types::{DataKey, Report};
 
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 /// The Reporting contract.
 #[contract]
 pub struct ReportingContract;
@@ -68,11 +71,13 @@ impl ReportingContract {
     ///
     /// Requires a valid signature from `admin`.
     pub fn initialize(env: Env, admin: Address) -> Result<(), ReportingError> {
-        admin.require_auth();
-
         if env.storage().instance().has(&DataKey::Initialized) {
             return Err(ReportingError::AlreadyInitialized);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ReportingError::InvalidAdmin);
+        }
+        admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);

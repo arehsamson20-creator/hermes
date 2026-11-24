@@ -47,6 +47,9 @@ pub use types::{DataKey, ValidatorInfo};
 
 use soroban_sdk::{contract, contractimpl, panic_with_error, Address, Env, Vec};
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 /// The Validators contract.
 ///
 /// Register, manage, and query on-chain validators for the Predictify platform.
@@ -83,19 +86,21 @@ impl ValidatorsContract {
     /// # Errors
     /// * [`ValidatorError::AlreadyInitialized`] — contract has already been
     ///   initialized; this call is a no-op after the first invocation.
-    /// * [`ValidatorError::InvalidConfig`] — `min_stake > max_stake` or either
-    ///   value is negative.
+    /// * [`ValidatorError::InvalidConfig`] — the admin is a reserved zero
+    ///   address, or the stake bounds are invalid.
     pub fn initialize(
         env: Env,
         admin: Address,
         min_stake: i128,
         max_stake: i128,
     ) -> Result<(), ValidatorError> {
-        admin.require_auth();
-
         if env.storage().instance().has(&DataKey::Initialized) {
             return Err(ValidatorError::AlreadyInitialized);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ValidatorError::InvalidConfig);
+        }
+        admin.require_auth();
         if min_stake < 0 || max_stake < 0 || min_stake > max_stake {
             return Err(ValidatorError::InvalidConfig);
         }

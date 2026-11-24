@@ -295,30 +295,18 @@ pub struct AdminValidator;
 impl AdminValidator {
     /// Validates the format and basic properties of an admin address.
     ///
-    /// This function performs basic validation on admin addresses to ensure they
-    /// meet the requirements for administrative operations. Currently implements
-    /// a placeholder validation due to Soroban SDK limitations.
+    /// Rejects the reserved all-zero account and contract address sentinels.
     ///
     /// # Parameters
     ///
-    /// * `_env` - The Soroban environment (currently unused)
-    /// * `_admin` - The admin address to validate
+    /// * `env` - The Soroban environment
+    /// * `admin` - The admin address to validate
     ///
     /// # Returns
     ///
     /// Returns `Result<(), Error>` where:
     /// - `Ok(())` - Address validation passed
     /// - `Err(Error)` - Address validation failed
-    ///
-    /// # Current Implementation
-    ///
-    /// The current implementation always returns `Ok(())` due to limitations
-    /// in the Soroban SDK that make it difficult to perform comprehensive
-    /// address validation. Future versions may include:
-    /// - Address format validation
-    /// - Address existence checks
-    /// - Blacklist validation
-    /// - Multi-signature validation
     ///
     /// # Example
     ///
@@ -339,25 +327,15 @@ impl AdminValidator {
     ///     }
     /// }
     /// ```
-    ///
-    /// # Future Enhancements
-    ///
-    /// When SDK capabilities improve, this function may validate:
-    /// - Address format compliance with Stellar standards
-    /// - Address existence on the network
-    /// - Address not in blacklist/blocklist
-    /// - Multi-signature threshold requirements
-    /// - Address activity and reputation metrics
-    ///
     /// # Security Considerations
     ///
-    /// While this function currently provides minimal validation,
-    /// it serves as a placeholder for future security enhancements.
-    /// Always combine with proper authentication using `require_auth()`.
-    pub fn validate_admin_address(_env: &Env, _admin: &Address) -> Result<(), Error> {
-        // For now, skip validation since we can't easily convert Address to string
-        // This is a limitation of the current Soroban SDK
-        Ok(())
+    /// The caller must still enforce authorization with `require_auth()`.
+    pub fn validate_admin_address(env: &Env, admin: &Address) -> Result<(), Error> {
+        if crate::admin_address::is_valid_admin_address(env, admin) {
+            Ok(())
+        } else {
+            Err(Error::InvalidInput)
+        }
     }
 
     /// Validates that the contract has not been previously initialized.

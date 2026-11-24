@@ -5,6 +5,9 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, 
 mod errors;
 pub use errors::ContractError;
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 // ============================================================
 // Types
 // ============================================================
@@ -278,9 +281,6 @@ impl FeesContract {
     /// - `ContractError::InvalidInput` if admin address is invalid
     /// - `ContractError::InvalidState` if already initialized
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
-        // ---- AUTH: require caller authentication before any state mutation ----
-        admin.require_auth();
-
         // Prevent re-initialization
         if env
             .storage()
@@ -289,6 +289,10 @@ impl FeesContract {
         {
             return Err(ContractError::InvalidState);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ContractError::InvalidInput);
+        }
+        admin.require_auth();
 
         // Store admin
         env.storage()

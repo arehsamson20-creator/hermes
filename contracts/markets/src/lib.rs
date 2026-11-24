@@ -52,6 +52,9 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Vec,
 };
 
+#[path = "../../admin_address.rs"]
+mod admin_address;
+
 pub use errors::ContractError;
 
 /// Type alias used by generated client code and test harnesses.
@@ -784,7 +787,6 @@ impl MarketsContract {
 
     /// Initializes the contract with its first administrator exactly once.
     pub fn initialize(env: Env, admin: Address) -> Result<(), ContractError> {
-        admin.require_auth();
         if env
             .storage()
             .persistent()
@@ -793,6 +795,10 @@ impl MarketsContract {
         {
             return Err(ContractError::AdminOperationNotPermitted);
         }
+        if !admin_address::is_valid_admin_address(&env, &admin) {
+            return Err(ContractError::AdminAddressInvalid);
+        }
+        admin.require_auth();
 
         // Issue #347: ensure the network's max TTL can accommodate the payout
         // curve TTL; otherwise the value would silently clamp.
